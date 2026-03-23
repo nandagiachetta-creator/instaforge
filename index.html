@@ -154,6 +154,45 @@ const CATEGORY_LABELS = {
   autoridade:'🏆 Autoridade',engajamento:'💬 Engajamento',bastidores:'🎬 Bastidores',
 };
 
+const MODEL_OPTIONS = [
+  {
+    value:'gemini-3.1-pro-preview',
+    imgModel:'gemini-3.1-flash-image-preview',
+    label:'Gemini 3.1 Pro',
+    imgLabel:'Nano Banana 2 (3.1 Flash Image)',
+    plan:'Pago',
+    planType:'paid',
+    desc:'Modelo mais avançado e poderoso. Requer faturamento ativo no Google Cloud.',
+  },
+  {
+    value:'gemini-3-flash-preview',
+    imgModel:'gemini-3.1-flash-image-preview',
+    label:'Gemini 3 Flash',
+    imgLabel:'Nano Banana 2 (3.1 Flash Image)',
+    plan:'Pago',
+    planType:'paid',
+    desc:'Alta performance, mais rápido e econômico que o 3.1 Pro. Requer faturamento.',
+  },
+  {
+    value:'gemini-2.5-flash',
+    imgModel:'gemini-2.5-flash-preview-image-generation',
+    label:'Gemini 2.5 Flash',
+    imgLabel:'Nano Banana (2.5 Flash Image)',
+    plan:'Pago',
+    planType:'paid',
+    desc:'Modelo estável e rápido. Ótimo custo-benefício. Requer faturamento.',
+  },
+  {
+    value:'gemini-2.0-flash-lite',
+    imgModel:'gemini-2.0-flash-preview-image-generation',
+    label:'Gemini 2.0 Flash Lite',
+    imgLabel:'Gemini 2.0 Flash Image',
+    plan:'Gratuito',
+    planType:'free',
+    desc:'Compatível com o plano gratuito. Requer intervalo maior entre gerações para evitar limite de cota.',
+  },
+];
+
 /* ── TOAST ── */
 let _setToasts = null;
 function toast(msg, type) {
@@ -178,9 +217,10 @@ function Toasts() {
 }
 
 /* ── GEMINI API ── */
-async function geminiText(apiKey, userPrompt, systemPrompt) {
+async function geminiText(apiKey, userPrompt, systemPrompt, textModel) {
+  const model = textModel || 'gemini-2.0-flash';
   const full = systemPrompt ? systemPrompt + '\n\n' + userPrompt : userPrompt;
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -193,8 +233,9 @@ async function geminiText(apiKey, userPrompt, systemPrompt) {
   return (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || '';
 }
 
-async function geminiImage(apiKey, prompt) {
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=' + apiKey, {
+async function geminiImage(apiKey, prompt, imgModel) {
+  const model = imgModel || 'gemini-2.0-flash-preview-image-generation';
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
@@ -363,7 +404,9 @@ function SettingsPanel() {
   const ctx = useContext(AppCtx);
   const settings = ctx.settings; const setSettings = ctx.setSettings;
   const apiKey = ctx.apiKey; const setApiKey = ctx.setApiKey;
+  const modelConfig = ctx.modelConfig; const saveModelConfig = ctx.saveModelConfig;
   const [newKey, setNewKey] = useState('');
+  const isFree = MODEL_OPTIONS.find(function(m){ return m.value===modelConfig.modelKey; }) && MODEL_OPTIONS.find(function(m){ return m.value===modelConfig.modelKey; }).planType === 'free';
 
   async function handleFile(file, field) {
     const url = await fileToDataUrl(file);
@@ -402,6 +445,71 @@ function SettingsPanel() {
   }
 
   return h('div', { style:{display:'flex',flexDirection:'column',gap:16} },
+
+    // ── Model Config
+    h('div', { className:'panel fade-up', style:{border:isFree?'1px solid rgba(232,185,79,0.35)':'1px solid var(--border)'} },
+      h('div', { className:'panel-title' }, '🤖 Modelo de IA & Plano'),
+      h('div', { className:'field' },
+        h('label', null, 'Modelo de Texto (Copies)'),
+        h('select', { className:'select-field', value:modelConfig.modelKey,
+          onChange:function(e){
+            const chosen = MODEL_OPTIONS.find(function(x){ return x.value===e.target.value; });
+            const defDelay = chosen && chosen.planType==='free' ? 6000 : 1600;
+            saveModelConfig({ modelKey:e.target.value, delayMs:defDelay });
+          }
+        },
+          MODEL_OPTIONS.map(function(m){ return h('option',{key:m.value,value:m.value},m.label+' — '+m.plan); })
+        )
+      ),
+      // Show which image model will be used
+      h('div', { className:'field' },
+        h('label', null, 'Modelo de Imagem (geração)'),
+        h('div', { style:{
+          background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)',
+          padding:'9px 13px', fontSize:13, color:'var(--gold2)', fontWeight:600,
+          display:'flex', alignItems:'center', gap:8
+        }},
+          h('span', { style:{fontSize:16} }, '🍌'),
+          MODEL_OPTIONS.find(function(m){ return m.value===modelConfig.modelKey; }) &&
+          MODEL_OPTIONS.find(function(m){ return m.value===modelConfig.modelKey; }).imgLabel
+        )
+      ),
+      h('div', { style:{
+        background:isFree?'rgba(232,185,79,0.08)':'rgba(62,207,142,0.08)',
+        border:isFree?'1px solid rgba(232,185,79,0.25)':'1px solid rgba(62,207,142,0.25)',
+        borderRadius:'var(--radius-sm)',padding:'10px 14px',marginBottom:14
+      }},
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:4}},
+          h('div',{style:{width:8,height:8,borderRadius:'50%',background:isFree?'var(--gold)':'var(--success)',flexShrink:0}}),
+          h('span',{style:{fontSize:13,fontWeight:700,color:isFree?'var(--gold2)':'var(--success)'}},
+            isFree?'⚠️ Plano Gratuito Ativo':'✅ Plano Pago Ativo')
+        ),
+        h('p',{style:{fontSize:12,color:'var(--fg3)',lineHeight:1.55}},
+          isFree
+            ? 'O plano gratuito tem limite de requisições por minuto. Use um intervalo maior entre gerações para evitar erro de cota. Recomendamos mínimo de 6 segundos.'
+            : 'Plano pago ativo. Intervalos menores são suficientes pois as cotas são maiores. Velocidade máxima recomendada: 1,6s.'
+        ),
+        isFree && h('a',{href:'https://console.cloud.google.com/billing',target:'_blank',rel:'noopener',
+          style:{fontSize:11,color:'var(--gold)',marginTop:6,display:'inline-block'}},
+          '→ Ativar faturamento para usar plano pago'
+        )
+      ),
+      h('div', { className:'field', style:{marginBottom:0} },
+        h('label', null, 'Intervalo entre gerações de imagem'),
+        h('div', { className:'range-wrap' },
+          h('input', { type:'range', min:1000, max:15000, step:500, value:modelConfig.delayMs,
+            onChange:function(e){ saveModelConfig(Object.assign({},modelConfig,{delayMs:+e.target.value})); }
+          }),
+          h('span', { className:'range-val' }, (modelConfig.delayMs/1000).toFixed(1)+'s')
+        ),
+        h('div',{style:{fontSize:11,color:'var(--fg3)',marginTop:5}},
+          isFree
+            ? 'Gratuito: recomendamos 6s–15s para evitar bloqueio por cota.'
+            : 'Pago: 1,6s é suficiente. Aumente se receber erros 429.'
+        )
+      )
+    ),
+
     // API Key
     h('div', { className:'panel fade-up' },
       h('div', { className:'panel-title' }, h(Icon,{n:'key',s:14}), 'Chave API Gemini'),
@@ -512,6 +620,7 @@ function SettingsPanel() {
 function CarouselGenerator() {
   const ctx = useContext(AppCtx);
   const settings = ctx.settings; const apiKey = ctx.apiKey;
+  const modelConfig = ctx.modelConfig; const activeModel = ctx.activeModel;
   const [form, setForm] = useState({ theme:'', product:'', price:'', baseText:'' });
   const [slides, setSlides] = useState([]);
   const [caption, setCaption] = useState('');
@@ -537,7 +646,7 @@ function CarouselGenerator() {
     try {
       const sys = 'Você é um copywriter de elite do mercado digital brasileiro. Domina escrita persuasiva para Instagram, gatilhos mentais, storytelling e CTAs irresistíveis. Também é diretor de arte visual. Responde APENAS em JSON válido, sem markdown, sem texto antes ou depois do JSON.';
       const prompt = 'Crie 6 copies para carrossel de Instagram.\nTema: '+form.theme+'\nProduto: '+(form.product||'não especificado')+'\nValor: '+(form.price||'não especificado')+'\nContexto: '+(form.baseText||'não especificado')+'\n\nRetorne exatamente este JSON:\n{"slides":[{"slideNumber":1,"headline":"Título 3-8 palavras","body":"2-3 frases persuasivas","cta":"call to action","imageDirection":"prompt visual cinematográfico único mínimo 3 linhas descrevendo composição, iluminação, paleta, atmosfera emocional"}],"caption":"legenda completa com emojis, hashtags e CTA"}\n\nSlide 1=Gancho, 2=Problema, 3=Solução, 4=Prova Social, 5=Benefícios, 6=CTA urgente. Cada imageDirection completamente único.';
-      const raw = await geminiText(apiKey, prompt, sys);
+      const raw = await geminiText(apiKey, prompt, sys, modelConfig.modelKey);
       const parsed = JSON.parse(cleanJson(raw));
       const initial = (parsed.slides||[]).map(function(s){ return Object.assign({},s); });
       setSlides(initial);
@@ -547,7 +656,7 @@ function CarouselGenerator() {
       const upd = initial.map(function(s){ return Object.assign({},s); });
       for (let i=0;i<upd.length;i++) {
         try {
-          const url = await geminiImage(apiKey, buildImagePrompt(upd[i].imageDirection, form.theme, settings.baseImageUrl));
+          const url = await geminiImage(apiKey, buildImagePrompt(upd[i].imageDirection, form.theme, settings.baseImageUrl), activeModel.imgModel);
           upd[i].generatedImageUrl = url;
           setSlides(upd.map(function(s){ return Object.assign({},s); }));
           setImgProgress(Math.round(((i+1)/upd.length)*100));
@@ -555,7 +664,7 @@ function CarouselGenerator() {
           upd[i].imgError = true;
           setSlides(upd.map(function(s){ return Object.assign({},s); }));
         }
-        if (i<upd.length-1) await delay(1600);
+        if (i<upd.length-1) await delay(modelConfig.delayMs);
       }
       toast('Carrossel completo! 🎉','success');
     } catch(e) { toast('Erro: '+e.message,'error'); }
@@ -569,7 +678,7 @@ function CarouselGenerator() {
     upd[idx].generatedImageUrl=null; upd[idx].imgError=false; upd[idx].regenerating=true;
     setSlides(upd);
     try {
-      const url = await geminiImage(apiKey, buildImagePrompt(s.imageDirection, form.theme, settings.baseImageUrl));
+      const url = await geminiImage(apiKey, buildImagePrompt(s.imageDirection, form.theme, settings.baseImageUrl), activeModel.imgModel);
       upd[idx].generatedImageUrl=url; upd[idx].regenerating=false;
     } catch(e) { upd[idx].imgError=true; upd[idx].regenerating=false; toast('Erro: '+e.message,'error'); }
     setSlides(upd.map(function(x){ return Object.assign({},x); }));
@@ -691,6 +800,7 @@ function CarouselGenerator() {
 function PostPlanner() {
   const ctx = useContext(AppCtx);
   const settings = ctx.settings; const apiKey = ctx.apiKey;
+  const modelConfig = ctx.modelConfig; const activeModel = ctx.activeModel;
   const [form, setForm] = useState({ theme:'', product:'', days:7 });
   const [posts, setPosts] = useState([]);
   const [genCopy, setGenCopy] = useState(false);
@@ -706,7 +816,7 @@ function PostPlanner() {
     try {
       const sys = 'Você é um estrategista de conteúdo e copywriter de elite do mercado digital brasileiro. Diretor de arte visual. Responde APENAS em JSON válido, sem markdown.';
       const prompt = 'Crie '+form.days+' sugestões de posts para Instagram.\nTema: '+form.theme+(form.product?'\nProduto: '+form.product:'')+'\n\nRetorne JSON:\n{"posts":[{"day":1,"title":"Título até 8 palavras","category":"educativo|inspiracional|venda|autoridade|engajamento|bastidores","caption":"legenda completa com emojis hashtags CTA","imageDirection":"prompt visual cinematográfico único mínimo 3 linhas"}]}\n\nVariar categorias. Cada imageDirection completamente único.';
-      const raw = await geminiText(apiKey, prompt, sys);
+      const raw = await geminiText(apiKey, prompt, sys, modelConfig.modelKey);
       const parsed = JSON.parse(cleanJson(raw));
       const initial = (parsed.posts||[]).map(function(p){ return Object.assign({},p); });
       setPosts(initial);
@@ -715,7 +825,7 @@ function PostPlanner() {
       const upd = initial.map(function(p){ return Object.assign({},p); });
       for (let i=0;i<upd.length;i++) {
         try {
-          const url = await geminiImage(apiKey, buildImagePrompt(upd[i].imageDirection, form.theme, settings.baseImageUrl));
+          const url = await geminiImage(apiKey, buildImagePrompt(upd[i].imageDirection, form.theme, settings.baseImageUrl), activeModel.imgModel);
           upd[i].generatedImageUrl = url;
           setPosts(upd.map(function(p){ return Object.assign({},p); }));
           setImgProgress(Math.round(((i+1)/upd.length)*100));
@@ -723,7 +833,7 @@ function PostPlanner() {
           upd[i].imgError = true;
           setPosts(upd.map(function(p){ return Object.assign({},p); }));
         }
-        if (i<upd.length-1) await delay(1600);
+        if (i<upd.length-1) await delay(modelConfig.delayMs);
       }
       toast('Planejamento completo! 🎉','success');
     } catch(e) { toast('Erro: '+e.message,'error'); }
@@ -736,7 +846,7 @@ function PostPlanner() {
     upd[idx].generatedImageUrl=null; upd[idx].imgError=false; upd[idx].regenerating=true;
     setPosts(upd);
     try {
-      const url = await geminiImage(apiKey, buildImagePrompt(p.imageDirection, form.theme, settings.baseImageUrl));
+      const url = await geminiImage(apiKey, buildImagePrompt(p.imageDirection, form.theme, settings.baseImageUrl), activeModel.imgModel);
       upd[idx].generatedImageUrl=url; upd[idx].regenerating=false;
     } catch(e) { upd[idx].imgError=true; upd[idx].regenerating=false; toast('Erro: '+e.message,'error'); }
     setPosts(upd.map(function(x){ return Object.assign({},x); }));
@@ -847,8 +957,18 @@ function App() {
     selectedFont:'playfair',colorPalette:DEFAULT_PALETTES[0].colors,
     imageSize:'1080x1080',baseImageUrl:null,
   });
+  const [modelConfig, setModelConfig] = useState(function(){
+    try { return JSON.parse(localStorage.getItem('model_config')||'null') || { modelKey:'gemini-2.5-flash', delayMs:1600 }; }
+    catch(e){ return { modelKey:'gemini-2.5-flash', delayMs:1600 }; }
+  });
 
   function setApiKey(k) { setApiKeyState(k); localStorage.setItem('gemini_key', k); }
+  function saveModelConfig(cfg) {
+    setModelConfig(cfg);
+    localStorage.setItem('model_config', JSON.stringify(cfg));
+  }
+
+  const activeModel = MODEL_OPTIONS.find(function(m){ return m.value===modelConfig.modelKey; }) || MODEL_OPTIONS[0];
 
   if (!apiKey) return h(Fragment,null,
     h('div',{className:'app-shell'},
@@ -865,11 +985,11 @@ function App() {
   );
 
   const statusDot = h('div',{style:{fontSize:12,color:'var(--fg3)',display:'flex',alignItems:'center',gap:6}},
-    h('div',{style:{width:6,height:6,borderRadius:'50%',background:'var(--success)'}}),
-    'Gemini conectado'
+    h('div',{style:{width:6,height:6,borderRadius:'50%',background:activeModel.planType==='free'?'var(--gold)':'var(--success)'}}),
+    activeModel.planType==='free' ? 'Gratuito · '+activeModel.label : 'Pago · '+activeModel.label
   );
 
-  return h(AppCtx.Provider,{value:{settings,setSettings,apiKey,setApiKey}},
+  return h(AppCtx.Provider,{value:{settings,setSettings,apiKey,setApiKey,modelConfig,saveModelConfig,activeModel}},
     h('div',{className:'app-shell'},
       h('div',{className:'topbar'},
         h('div',{style:{display:'flex',alignItems:'center',gap:10}},
